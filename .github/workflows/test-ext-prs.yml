@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   authorize:
     environment:
@@ -18,9 +21,13 @@ jobs:
     needs: authorize
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
-      - run: printenv REPO_SECRET 
+      - name: Print git HEAD
+        run: git log -1 --pretty=oneline
+      - name: Print REPO_SECRET
+        run: printenv REPO_SECRET 
         env:
           REPO_SECRET: ${{ secrets.REPO_SECRET }}
