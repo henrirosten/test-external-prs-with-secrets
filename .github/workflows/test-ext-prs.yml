@@ -1,0 +1,67 @@
+name: test-ext-prs
+
+on:
+  pull_request_target:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  authorize-build:
+    environment:
+      ${{ github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name != github.repository && 'external' || 'internal' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+
+  build:
+    needs: authorize-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+      - name: Check if workflow file is modified
+        shell: bash
+        run: |
+          echo "git log -1 --pretty=oneline:"
+          git log -1 --pretty=oneline
+
+          echo "git diff --name-only HEAD^ HEAD:"
+          git diff --name-only HEAD^ HEAD
+
+          echo "Checking if workflow file is modified"
+          workflow_changed='False'
+          while read -r line;
+          do
+            if [[ ${{ github.workflow_ref }} == *$line* ]]; then
+              echo "Change edits this workflow file"
+              workflow_changed='True'
+            fi
+          done < <(git diff --name-only HEAD^ HEAD)
+          echo "WORKFLOW_CHANGED=$workflow_changed"
+          echo "WORKFLOW_CHANGED=$workflow_changed" >> "$GITHUB_ENV"
+      - name: Disable external changes to this workflow
+        if: env.WORKFLOW_CHANGED == 'True'
+        run: |
+          echo "github.event_name: ${{ github.event_name }}"
+          echo "github.repository: ${{ github.repository }}"
+          echo "github.event.pull_request.head.repo.full_name: ${{ github.event.pull_request.head.repo.full_name }}"
+          if [ ${{ github.event_name }} = 'pull_request_target' ] && \
+             [ ${{ github.event.pull_request.head.repo.full_name }} != ${{ github.repository }} ];
+          then
+            echo "::error::Editing this workflow file from an external PR is not allowed"
+            exit 1
+          fi
+      - name: Print REPO_SECRET
+        run: printenv REPO_SECRET 
+        env:
+          REPO_SECRET: ${{ secrets.REPO_SECRET }}
