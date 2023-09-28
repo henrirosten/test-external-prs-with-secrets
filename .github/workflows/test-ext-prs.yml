@@ -61,7 +61,15 @@ jobs:
             echo "::error::Editing this workflow file from an external PR is not allowed"
             exit 1
           fi
+          echo ""
+          echo "Editing this workflow file from an internal PR is allowed."
+          echo "::error::Note that the change you have done will only take impact after merge!"
+          echo "Therefore, you need to manually test this change (perhaps in a forked repo) before merge"
+          echo "to make sure the change does not break anything."
+          echo ""
+          echo "::warning::Will not run the build step, for the reasons explained above."
       - name: Print REPO_SECRET
+        if: env.WORKFLOW_CHANGED == 'False'
         run: printenv REPO_SECRET 
         env:
           REPO_SECRET: ${{ secrets.REPO_SECRET }}
