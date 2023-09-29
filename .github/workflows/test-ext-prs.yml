@@ -12,19 +12,64 @@ permissions:
   contents: read
 
 jobs:
-  authorize-build:
-    environment:
-      ${{ github.event_name == 'pull_request_target' &&
-      github.event.pull_request.head.repo.full_name != github.repository && 'external' || 'internal' }}
+  authorize-without-approval:
     runs-on: ubuntu-latest
+    outputs:
+      authorized_user: ${{ steps.check-authorized-user.outputs.authorized_user}}
+    environment: 'internal-build-workflow'
     steps:
-      - run: true
+      - name: Authorize without approval
+        id: check-authorized-user
+        shell: bash
+        run: |
+          authorized_user='False'
+          for user in ${{ vars.AUTHORIZED_USERS }};
+          do
+            if [ "$user" = "${{ github.actor }}" ]; then
+              authorized_user='True'
+            fi
+          done
+          echo "github.event_name: ${{ github.event_name }}"
+          echo "github.repository: ${{ github.repository }}"
+          echo "github.event.pull_request.head.repo.full_name: ${{ github.event.pull_request.head.repo.full_name }}"
+          echo "github.actor: ${{ github.actor }}"
+          echo "authorized_user=$authorized_user"
+          echo "authorized_user=$authorized_user" >> "$GITHUB_OUTPUT"
+
+  authorize-internal:
+    needs: authorize-without-approval
+    runs-on: ubuntu-latest
+    if: ${{ needs.authorize-without-approval.outputs.authorized_user == 'True' }}
+    steps:
+      - name: Authorized internal
+        run: true
+
+  authorize-external:
+    needs: authorize-without-approval
+    runs-on: ubuntu-latest
+    if: ${{ needs.authorize-without-approval.outputs.authorized_user == 'False' }}
+    environment: |
+      ${{ github.event_name == 'pull_request_target' &&
+          github.event.pull_request.head.repo.full_name != github.repository &&
+          'external-build-workflow' }}
+    steps:
+      - name: Authorized external
+        run: true
+
+  authorize-build:
+    needs: [authorize-internal, authorize-external]
+    runs-on: ubuntu-latest
+    if: always() && contains(needs.*.result, 'success')
+    steps:
+      - name: Authorized build
+        run: true
 
   check-workflow-changes:
     needs: authorize-build
     runs-on: ubuntu-latest
     outputs:
-      changed: ${{ steps.check-workflow.outputs.workflow_changed }}
+      workflow_changed: ${{ steps.check-workflow.outputs.workflow_changed }}
+    if: always() && needs.authorize-build.result == 'success'
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -56,9 +101,6 @@ jobs:
             exit 0
           fi
 
-          echo "github.event_name: ${{ github.event_name }}"
-          echo "github.repository: ${{ github.repository }}"
-          echo "github.event.pull_request.head.repo.full_name: ${{ github.event.pull_request.head.repo.full_name }}"
           if [ ${{ github.event_name }} = 'pull_request_target' ] && \
              [ ${{ github.event.pull_request.head.repo.full_name }} != ${{ github.repository }} ];
           then
@@ -77,14 +119,13 @@ jobs:
                "For now, there's no point of running the remaining steps since the"\
                "results would not reflect the change you have done to the workflow"\
                "file, and might cause outright confusion or misinterpretation."
+
   build:
-    needs: 
-      - authorize-build
-      - check-workflow-changes
+    needs: [check-workflow-changes]
     runs-on: ubuntu-latest
     # Only run the build steps if the change does not modify this workflow file,
-    # as explained in the error message in the check-workflow step.
-    if: needs.check-workflow-changes.outputs.changed == 'False'
+    # to avoid confusion as explained in the error message in the check-workflow step.
+    if: always() && needs.check-workflow-changes.outputs.workflow_changed == 'False'
     steps:
       - name: Checkout
         uses: actions/checkout@v3
