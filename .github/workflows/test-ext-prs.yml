@@ -50,8 +50,7 @@ jobs:
     if: ${{ needs.authorize-without-approval.outputs.authorized_user == 'False' }}
     environment: |
       ${{ github.event_name == 'pull_request_target' &&
-          github.event.pull_request.head.repo.full_name != github.repository &&
-          'external-build-workflow' }}
+          github.event.pull_request.head.repo.full_name != github.repository && 'external-build-workflow' }}
     steps:
       - name: Authorized external
         run: true
@@ -59,7 +58,11 @@ jobs:
   authorize-build:
     needs: [authorize-internal, authorize-external]
     runs-on: ubuntu-latest
-    if: always() && contains(needs.*.result, 'success')
+    if: |
+      always() &&
+      (needs.authorize-internal.result == 'success' || needs.authorize-internal.result == 'skipped') &&
+      (needs.authorize-external.result == 'success' || needs.authorize-external.result == 'skipped') &&
+       !(needs.authorize-internal.result == 'skipped' && needs.authorize-external.result == 'skipped')
     steps:
       - name: Authorized build
         run: true
