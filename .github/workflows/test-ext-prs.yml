@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  authorize-without-approval:
+  check-identity:
     runs-on: ubuntu-latest
     outputs:
       authorized_user: ${{ steps.check-authorized-user.outputs.authorized_user}}
@@ -37,17 +37,17 @@ jobs:
           echo "authorized_user=$authorized_user" >> "$GITHUB_OUTPUT"
 
   authorize-internal:
-    needs: authorize-without-approval
+    needs: check-identity
     runs-on: ubuntu-latest
-    if: ${{ needs.authorize-without-approval.outputs.authorized_user == 'True' }}
+    if: ${{ needs.check-identity.outputs.authorized_user == 'True' }}
     steps:
       - name: Authorized internal
         run: true
 
   authorize-external:
-    needs: authorize-without-approval
+    needs: check-identity
     runs-on: ubuntu-latest
-    if: ${{ needs.authorize-without-approval.outputs.authorized_user == 'False' }}
+    if: ${{ needs.check-identity.outputs.authorized_user == 'False' }}
     environment: 
       ${{ ( github.event_name == 'pull_request_target' &&
             github.event.pull_request.head.repo.full_name != github.repository && 
