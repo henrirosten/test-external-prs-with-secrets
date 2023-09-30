@@ -18,7 +18,7 @@ jobs:
       authorized_user: ${{ steps.check-authorized-user.outputs.authorized_user}}
     environment: 'internal-build-workflow'
     steps:
-      - name: Authorize without approval
+      - name: Check identity
         id: check-authorized-user
         shell: bash
         run: |
@@ -37,15 +37,15 @@ jobs:
           echo "authorized_user=$authorized_user" >> "$GITHUB_OUTPUT"
 
   authorize-internal:
-    needs: check-identity
+    needs: [check-identity]
     runs-on: ubuntu-latest
     if: ${{ needs.check-identity.outputs.authorized_user == 'True' }}
     steps:
-      - name: Authorized internal
-        run: true
+      - name: Authorize internal
+        run: echo "authorized"
 
   authorize-external:
-    needs: check-identity
+    needs: [check-identity]
     runs-on: ubuntu-latest
     if: ${{ needs.check-identity.outputs.authorized_user == 'False' }}
     environment: 
@@ -53,10 +53,10 @@ jobs:
             github.event.pull_request.head.repo.full_name != github.repository && 
             'external-build-workflow' ) || ( 'internal-build-workflow' ) }}
     steps:
-      - name: Authorized external
-        run: true
+      - name: Authorize external
+        run: echo "authorized"
 
-  authorize-build:
+  authorize:
     needs: [authorize-internal, authorize-external]
     runs-on: ubuntu-latest
     if: |
@@ -65,82 +65,17 @@ jobs:
       (needs.authorize-external.result == 'success' || needs.authorize-external.result == 'skipped') &&
        !(needs.authorize-internal.result == 'skipped' && needs.authorize-external.result == 'skipped')
     steps:
-      - name: Authorized build
-        run: true
-
-  check-workflow-changes:
-    needs: authorize-build
-    runs-on: ubuntu-latest
-    outputs:
-      workflow_changed: ${{ steps.check-workflow.outputs.workflow_changed }}
-    if: always() && needs.authorize-build.result == 'success'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-      - name: Check if this workflow file is modified
-        id: check-workflow
-        shell: bash
-        run: |
-          echo "git log -1 --pretty=oneline:"
-          git log -1 --pretty=oneline
-
-          echo "git diff --name-only HEAD^ HEAD:"
-          git diff --name-only HEAD^ HEAD
-
-          echo "Checking if workflow file is modified"
-          workflow_changed='False'
-          workflow_filename=''
-          while read -r line;
-          do
-            if [[ ${{ github.workflow_ref }} == *$line* ]]; then
-              workflow_changed='True'
-              workflow_filename="$line"
-              break
-            fi
-          done < <(git diff --name-only HEAD^ HEAD)
-          echo "workflow_changed=$workflow_changed"
-          echo "workflow_changed=$workflow_changed" >> "$GITHUB_OUTPUT"
-          if [ "$workflow_changed" = "False" ]; then
-            exit 0
-          fi
-
-          if [ ${{ github.event_name }} = 'pull_request_target' ] && \
-             [ ${{ github.event.pull_request.head.repo.full_name }} != ${{ github.repository }} ];
-          then
-            echo ""
-            echo "::error::"\
-                  "Editing workflow file '$workflow_filename' with PR from a"\
-                  "forked repository is not allowed. The change you are trying to do"\
-                  "requires internal PR from someone with write access to this repo."
-            exit 1
-          fi
-          echo ""
-          echo "::error::"\
-               "You are editing workflow file '$workflow_filename' from an"\
-               "internal PR. Raising this error (but not failing the job) to make"\
-               "sure you understand that the workflow change you have done will"\
-               "only take impact after merge."\
-               "Therefore, you need to manually test the change (perhaps in a"\
-               "forked repo) before merge to make sure the change does not break"\
-               "anything."\
-               "For now, there's no point of running the remaining steps since the"\
-               "results would not reflect the modification you have done to the"\
-               "workflow, and might cause outright confusion or misinterpretation."
+      - name: Authorize
+        run: echo "authorized"
 
   build:
-    needs: [check-workflow-changes]
+    needs: [authorize]
     runs-on: ubuntu-latest
-    # Only run the build steps if the change does not modify this workflow file,
-    # to avoid confusion as explained in the error message in the check-workflow step.
-    if: always() && needs.check-workflow-changes.outputs.workflow_changed == 'False'
+    if: always() && needs.authorize.result == 'success'
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          fetch-depth: 1
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
       - name: Print REPO_SECRET
         run: printenv REPO_SECRET 
