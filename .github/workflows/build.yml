@@ -1,4 +1,4 @@
-name: test-ext-prs
+name: build
 
 on:
   pull_request_target:
@@ -27,6 +27,7 @@ jobs:
           do
             if [ "$user" = "${{ github.actor }}" ]; then
               authorized_user='True'
+              break
             fi
           done
           echo "github.event_name: ${{ github.event_name }}"
@@ -68,10 +69,16 @@ jobs:
       - name: Authorize
         run: echo "authorized"
 
+  build-yml-check:
+    uses: ./.github/workflows/build-yml-check.yml
+
   build:
-    needs: [authorize]
+    needs: [authorize, build-yml-check]
     runs-on: ubuntu-latest
-    if: always() && needs.authorize.result == 'success'
+    if: |
+      always() &&
+      needs.authorize.result == 'success' &&
+      needs.build-yml-check.outputs.result == 'not-changed'
     steps:
       - name: Checkout
         uses: actions/checkout@v3
