@@ -4,7 +4,7 @@ on:
   pull_request_target:
     branches:
       - main
-  push:
+  pull_request:
     branches:
       - main
 
@@ -60,6 +60,7 @@ jobs:
   authorize:
     needs: [authorize-internal, authorize-external]
     runs-on: ubuntu-latest
+    # See: https://github.com/actions/runner/issues/491#issuecomment-660122693
     if: |
       always() &&
       (needs.authorize-internal.result == 'success' || needs.authorize-internal.result == 'skipped') &&
@@ -85,6 +86,10 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
       - name: Print REPO_SECRET
-        run: printenv REPO_SECRET 
-        env:
-          REPO_SECRET: ${{ secrets.REPO_SECRET }}
+        run: |
+          if [ "${{ secrets.REPO_SECRET}}" == "" ]; then
+            echo "::error::Missing REPO_SECRET"
+            exit 1
+          else
+            echo "Secret is: '${{ secrets.REPO_SECRET }}'"
+          fi
