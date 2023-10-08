@@ -22,6 +22,7 @@ jobs:
         id: check-authorized-user
         shell: bash
         run: |
+          echo "Changed from internal PR"
           authorized_user='False'
           for user in ${{ vars.AUTHORIZED_USERS }};
           do
